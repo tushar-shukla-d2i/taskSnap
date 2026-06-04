@@ -18,7 +18,10 @@
     "axios": "^1.16.1",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "react-filerobot-image-editor": "^5.0.0-beta.156",
+    "react-konva": "^19.2.4",
+    "styled-components": "^6.4.2"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

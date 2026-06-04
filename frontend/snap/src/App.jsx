@@ -228,16 +228,15 @@ function App() {
             </div>
           </div>
 
-          {/* Right Side: Screenshot + Editor Panel */}
+          {/* Right Side: Screenshot Panel */}
           <div className="glass-card screenshot-panel">
             <div className="panel-header">
               <div className="panel-title">
-                <span>{showEditor ? "✏️" : "📷"}</span>
-                {showEditor ? " Image Editor" : " Captured Screenshot"}
+                <span>📷</span>
+                {" Captured Screenshot"}
               </div>
               <div className="panel-actions">
-                {/* Edit button — opens Fabric.js editor */}
-                {screenshotUrl && !showEditor && (
+                {screenshotUrl && (
                   <button
                     className="action-btn edit-open-btn"
                     onClick={() => setShowEditor(true)}
@@ -246,35 +245,22 @@ function App() {
                     ✏️ Edit
                   </button>
                 )}
-                {showEditor && (
-                  <button
-                    className="action-btn"
-                    onClick={() => setShowEditor(false)}
-                    title="Back to preview"
-                  >
-                    ← Back
-                  </button>
-                )}
-                {!showEditor && (
-                  <>
-                    <button
-                      className="action-btn"
-                      onClick={downloadScreenshot}
-                      disabled={!screenshotUrl || isLoading}
-                      title="Download Screenshot"
-                    >
-                      📥
-                    </button>
-                    <button
-                      className="action-btn"
-                      onClick={() => window.open(screenshotUrl, "_blank")}
-                      disabled={!screenshotUrl || isLoading}
-                      title="Open Image in New Tab"
-                    >
-                      🔗
-                    </button>
-                  </>
-                )}
+                <button
+                  className="action-btn"
+                  onClick={downloadScreenshot}
+                  disabled={!screenshotUrl || isLoading}
+                  title="Download Screenshot"
+                >
+                  📥
+                </button>
+                <button
+                  className="action-btn"
+                  onClick={() => window.open(screenshotUrl, "_blank")}
+                  disabled={!screenshotUrl || isLoading}
+                  title="Open Image in New Tab"
+                >
+                  🔗
+                </button>
               </div>
             </div>
 
@@ -291,16 +277,8 @@ function App() {
                 </div>
               )}
 
-              {/* Fabric.js Editor */}
-              {screenshotUrl && showEditor && (
-                <ImageEditor
-                  imageUrl={screenshotUrl}
-                  onClose={() => setShowEditor(false)}
-                />
-              )}
-
               {/* Plain screenshot preview */}
-              {screenshotUrl && !showEditor && !isLoading && (
+              {screenshotUrl && !isLoading && (
                 <div className="screenshot-img-wrapper">
                   <img
                     src={screenshotUrl}
@@ -330,6 +308,22 @@ function App() {
             </div>
           </div>
         </section>
+
+        {/* ── Image Editor — Full-screen overlay ── */}
+        {showEditor && screenshotUrl && (
+          <div className="editor-overlay">
+            <div className="overlay-topbar">
+              <span className="overlay-title">✏️ Image Editor</span>
+              <button className="overlay-close-btn" onClick={() => setShowEditor(false)}>← Back to Preview</button>
+            </div>
+            <div className="overlay-editor-body">
+              <ImageEditor
+                imageUrl={screenshotUrl}
+                onClose={() => setShowEditor(false)}
+              />
+            </div>
+          </div>
+        )}
       </main>
 
       <footer>
