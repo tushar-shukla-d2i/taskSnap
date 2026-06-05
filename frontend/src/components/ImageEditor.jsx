@@ -191,13 +191,11 @@ export default function ImageEditor({ imageUrl, onClose }) {
       }
 
       const tool = activeToolRef.current;
-      console.log("mouse:down, tool:", tool, "target:", opt.target?.name);
       if (tool === TOOLS.SELECT) return;
       if (opt.target && opt.target.name !== "__bg__") return;
       opt.e.preventDefault();
       
       if (tool === TOOLS.CROP && cropRectRef.current) {
-        console.log("Removing old crop rect");
         canvas.remove(cropRectRef.current);
         cropRectRef.current = null;
         canvas.renderAll();
@@ -244,7 +242,6 @@ export default function ImageEditor({ imageUrl, onClose }) {
         drawingRef.current = rect;
         if (isCrop) {
           cropRectRef.current = rect;
-          console.log("cropRectRef SET to rect", rect);
         }
       }
       if (tool === TOOLS.CIRCLE) {
@@ -281,8 +278,6 @@ export default function ImageEditor({ imageUrl, onClose }) {
       const pointer = canvas.getScenePoint(opt.e);
       const ox = originRef.current.x, oy = originRef.current.y;
       const tool = activeToolRef.current;
-      console.log("mouse:move, tool:", tool, "pointer:", pointer.x, pointer.y, "origin:", ox, oy);
-
       if (tool === TOOLS.RECT || tool === TOOLS.CROP) {
         const newW = Math.abs(pointer.x - ox);
         const newH = Math.abs(pointer.y - oy);
@@ -326,7 +321,6 @@ export default function ImageEditor({ imageUrl, onClose }) {
       drawingRef.current = null;
       if (!shape) return;
       if (activeToolRef.current === TOOLS.CROP) {
-        console.log("mouse:up CROP - cropRectRef.current is:", !!cropRectRef.current);
         return;
       }
       shape.set({ selectable: true, evented: true });
@@ -362,9 +356,6 @@ export default function ImageEditor({ imageUrl, onClose }) {
 
   // ─── Crop confirm ─────────────────────────────────────────────────────────
   const confirmCrop = useCallback(() => {
-    console.log("=== CONFIRM CROP CLICKED ===");
-    console.log("fabricRef.current exists:", !!fabricRef.current);
-    console.log("cropRectRef.current exists:", !!cropRectRef.current);
     const canvas = fabricRef.current;
     const cropRect = cropRectRef.current;
     if (!canvas || !cropRect) {
@@ -374,7 +365,6 @@ export default function ImageEditor({ imageUrl, onClose }) {
     
     cropRect.setCoords();
     const bounds = cropRect.getBoundingRect();
-    console.log("Crop bounds:", bounds);
     if (bounds.width < 5 || bounds.height < 5) { cancelCrop(); return; }
     
     // Remove the crop rectangle so it doesn't appear in the snapshot
@@ -387,12 +377,10 @@ export default function ImageEditor({ imageUrl, onClose }) {
     try {
       // 1. Snapshot the entire canvas (flattens annotations into the image)
       const src = canvas.toDataURL({ format: "png", multiplier: 1 });
-      console.log("Canvas snapshot generated.");
       
       // 2. Use an HTML Image element to load it
       const img2 = new Image();
       img2.onload = () => {
-        console.log("Full canvas image loaded for cropping.", img2.width, "x", img2.height);
         try {
           // 3. Create an off-screen canvas sized exactly to the crop rectangle
           const tmp = document.createElement("canvas");
@@ -409,12 +397,10 @@ export default function ImageEditor({ imageUrl, onClose }) {
           
           // 5. Get the base64 of the cropped image
           const croppedUrl = tmp.toDataURL("image/png");
-          console.log("Cropped data URL generated.");
           
           // 6. Safely remove ALL existing objects from the Fabric canvas (copy array first to avoid mutation skipping)
           const objects = [...canvas.getObjects()];
           objects.forEach(obj => canvas.remove(obj));
-          console.log("Canvas cleared. Objects remaining:", canvas.getObjects().length);
           
           // 7. Load the newly cropped image back into Fabric
           fabric.FabricImage.fromURL(croppedUrl, { crossOrigin: "anonymous" }).then((newImg) => {
