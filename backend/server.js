@@ -55,9 +55,13 @@ app.post("/capture", async (req, res) => {
 
         await browser.close();
 
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.get("host");
+        const baseUrl = `${protocol}://${host}`;
+
         res.json({
             success: true,
-            screenshot: `http://localhost:5000/screenshots/${filename}`,
+            screenshot: `${baseUrl}/screenshots/${filename}`,
         });
     } catch (error) {
         console.error(error);
@@ -69,6 +73,8 @@ app.post("/capture", async (req, res) => {
     }
 });
 
-app.listen(5000, () => {
-    console.log("Server running on port 5000");
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
 });
