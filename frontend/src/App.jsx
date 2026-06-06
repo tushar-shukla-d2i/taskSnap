@@ -10,13 +10,7 @@ function App() {
   const [error, setError] = useState("");
   const [showEditor, setShowEditor] = useState(false);
 
-  // Preset websites for quick testing
-  const presets = [
-    { name: "Wikipedia", url: "https://www.wikipedia.org" },
-    { name: "GitHub",    url: "https://github.com" },
-    { name: "Vite.js",  url: "https://vite.dev" },
-    { name: "React.js", url: "https://react.dev" }
-  ];
+
 
   // Helper to format URL
   const formatUrl = (url) => {
@@ -160,22 +154,7 @@ function App() {
             </button>
           </div>
 
-          <div className="preset-container">
-            <span className="preset-label">Presets:</span>
-            {presets.map((preset) => (
-              <button
-                key={preset.name}
-                className="preset-chip"
-                onClick={() => {
-                  setInputUrl(preset.url);
-                  handleCapture(preset.url);
-                }}
-                disabled={isLoading}
-              >
-                {preset.name}
-              </button>
-            ))}
-          </div>
+
 
           {error && (
             <div className="error-banner">

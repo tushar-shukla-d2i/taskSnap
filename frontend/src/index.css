@@ -848,18 +848,25 @@ footer a:hover {
 }
 
 .stroke-select {
-  background: rgba(0,0,0,0.35);
+  background: #161722;
   border: 1px solid var(--card-border);
   border-radius: 6px;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   font-family: var(--sans);
   font-size: 0.78rem;
-  padding: 0.2rem 0.4rem;
+  padding: 0.3rem 0.6rem;
   cursor: pointer;
-}
-.stroke-select:focus {
   outline: none;
-  border-color: var(--accent);
+  transition: all 0.18s ease;
+}
+.stroke-select:hover, .stroke-select:focus {
+  background: #1f2030;
+  border-color: rgba(139, 92, 246, 0.4);
+  color: #c4b5fd;
+}
+.stroke-select option {
+  background-color: #161722;
+  color: var(--text-primary);
 }
 
 /* ─── Toolbar actions (undo/redo/download) ──────────────────────────────────── */

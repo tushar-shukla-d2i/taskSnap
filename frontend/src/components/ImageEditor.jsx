@@ -174,7 +174,8 @@ export default function ImageEditor({ imageUrl, onClose }) {
       zoom *= 0.999 ** delta;
       if (zoom > 20) zoom = 20;
       if (zoom < 0.1) zoom = 0.1;
-      canvas.zoomToPoint({ x: opt.e.offsetX, y: opt.e.offsetY }, zoom);
+      const zoomPoint = opt.viewportPoint || { x: opt.e.offsetX, y: opt.e.offsetY };
+      canvas.zoomToPoint(zoomPoint, zoom);
       opt.e.preventDefault();
       opt.e.stopPropagation();
     });
@@ -202,7 +203,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
       }
       
       isDrawingRef.current = true;
-      const pointer = canvas.getScenePoint(opt.e);
+      const pointer = opt.scenePoint || canvas.getScenePoint(opt.e);
       originRef.current = { x: pointer.x, y: pointer.y };
 
       if (tool === TOOLS.TEXT) {
@@ -222,6 +223,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
           canvas.renderAll();
         }, 50);
         pushSnapshot();
+        selectTool(TOOLS.SELECT);
         return;
       }
 
@@ -229,6 +231,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
         stroke: strokeColorRef.current, strokeWidth: strokeWidthRef.current,
         fill: useFillRef.current ? fillColorRef.current : "transparent",
         selectable: false, evented: false, strokeUniform: true,
+        originX: "left", originY: "top",
         name: tool + "_" + Date.now(),
       };
 
@@ -275,7 +278,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
       }
 
       if (!isDrawingRef.current || !drawingRef.current) return;
-      const pointer = canvas.getScenePoint(opt.e);
+      const pointer = opt.scenePoint || canvas.getScenePoint(opt.e);
       const ox = originRef.current.x, oy = originRef.current.y;
       const tool = activeToolRef.current;
       if (tool === TOOLS.RECT || tool === TOOLS.CROP) {
@@ -321,9 +324,23 @@ export default function ImageEditor({ imageUrl, onClose }) {
       drawingRef.current = null;
       if (!shape) return;
       if (activeToolRef.current === TOOLS.CROP) {
+        if (cropRectRef.current) {
+          cropRectRef.current.set({
+            selectable: true,
+            evented: true,
+            lockRotation: true,
+            lockSkewingX: true,
+            lockSkewingY: true,
+          });
+          cropRectRef.current.setControlsVisibility({ mtr: false });
+          cropRectRef.current.setCoords();
+          canvas.setActiveObject(cropRectRef.current);
+        }
+        canvas.renderAll();
         return;
       }
       shape.set({ selectable: true, evented: true });
+      shape.setCoords();
       canvas.renderAll();
       pushSnapshot();
     });
