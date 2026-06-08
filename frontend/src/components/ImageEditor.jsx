@@ -9,6 +9,7 @@ const TOOLS = {
   ELLIPSE: "ellipse",
   TEXT:    "text",
   CROP:    "crop",
+  ARROW:   "arrow",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -263,6 +264,14 @@ export default function ImageEditor({ imageUrl, onClose }) {
         canvas.add(ellipse);
         drawingRef.current = ellipse;
       }
+      if (tool === TOOLS.ARROW) {
+        const arrow = new fabric.Path(`M ${pointer.x} ${pointer.y} L ${pointer.x} ${pointer.y}`, {
+          ...shapeProps,
+          fill: "transparent",
+        });
+        canvas.add(arrow);
+        drawingRef.current = arrow;
+      }
     });
 
     canvas.on("mouse:move", (opt) => {
@@ -304,6 +313,32 @@ export default function ImageEditor({ imageUrl, onClose }) {
           rx: Math.max(Math.abs(pointer.x - ox) / 2, 1), ry: Math.max(Math.abs(pointer.y - oy) / 2, 1),
         });
         drawingRef.current.setCoords();
+      }
+      if (tool === TOOLS.ARROW) {
+        const x2 = pointer.x;
+        const y2 = pointer.y;
+        const angle = Math.atan2(y2 - oy, x2 - ox);
+        const headLength = Math.max(15, strokeWidthRef.current * 4);
+        const x3 = x2 - headLength * Math.cos(angle - Math.PI / 6);
+        const y3 = y2 - headLength * Math.sin(angle - Math.PI / 6);
+        const x4 = x2 - headLength * Math.cos(angle + Math.PI / 6);
+        const y4 = y2 - headLength * Math.sin(angle + Math.PI / 6);
+        const pathData = `M ${ox} ${oy} L ${x2} ${y2} M ${x3} ${y3} L ${x2} ${y2} L ${x4} ${y4}`;
+        
+        canvas.remove(drawingRef.current);
+        const arrow = new fabric.Path(pathData, {
+          stroke: strokeColorRef.current,
+          strokeWidth: strokeWidthRef.current,
+          fill: "transparent",
+          selectable: false,
+          evented: false,
+          strokeUniform: true,
+          originX: "left",
+          originY: "top",
+          name: tool + "_" + Date.now(),
+        });
+        canvas.add(arrow);
+        drawingRef.current = arrow;
       }
       canvas.renderAll();
     });
@@ -480,6 +515,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
     { id: TOOLS.RECT,    label: "▭ Rect",    title: "Draw rectangle" },
     { id: TOOLS.CIRCLE,  label: "◯ Circle",  title: "Draw circle" },
     { id: TOOLS.ELLIPSE, label: "⬭ Ellipse", title: "Draw ellipse" },
+    { id: TOOLS.ARROW,   label: "➔ Arrow",   title: "Draw arrow" },
     { id: TOOLS.TEXT,    label: "T Text",    title: "Click to place editable text" },
     { id: TOOLS.CROP,    label: "✂ Crop",    title: "Crop image" },
   ];
