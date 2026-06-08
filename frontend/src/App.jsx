@@ -9,6 +9,11 @@ function App() {
   const [loadingStep, setLoadingStep] = useState("");
   const [error, setError] = useState("");
   const [showEditor, setShowEditor] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(1);
+
+  const zoomIn  = () => setZoomLevel(z => Math.min(z + 0.5, 4));
+  const zoomOut = () => setZoomLevel(z => Math.max(z - 0.5, 0.5));
+  const zoomReset = () => setZoomLevel(1);
 
 
 
@@ -62,6 +67,7 @@ function App() {
     setError("");
     setScreenshotUrl("");
     setShowEditor(false);
+    setZoomLevel(1);
 
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
@@ -217,13 +223,35 @@ function App() {
               </div>
               <div className="panel-actions">
                 {screenshotUrl && (
-                  <button
-                    className="action-btn edit-open-btn"
-                    onClick={() => setShowEditor(true)}
-                    title="Open Image Editor"
-                  >
-                    ✏️ Edit
-                  </button>
+                  <>
+                    <button
+                      className="action-btn"
+                      onClick={zoomOut}
+                      disabled={zoomLevel <= 0.5}
+                      title="Zoom Out"
+                    >🔍−</button>
+                    <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", color: "var(--text-secondary)", minWidth: "2.5rem" }}>
+                      {Math.round(zoomLevel * 100)}%
+                    </span>
+                    <button
+                      className="action-btn"
+                      onClick={zoomIn}
+                      disabled={zoomLevel >= 4}
+                      title="Zoom In"
+                    >🔍+</button>
+                    <button
+                      className="action-btn"
+                      onClick={zoomReset}
+                      title="Reset Zoom"
+                    >⊞</button>
+                    <button
+                      className="action-btn edit-open-btn"
+                      onClick={() => setShowEditor(true)}
+                      title="Open Image Editor"
+                    >
+                      ✏️ Edit
+                    </button>
+                  </>
                 )}
                 <button
                   className="action-btn"
@@ -257,9 +285,12 @@ function App() {
                 </div>
               )}
 
-              {/* Plain screenshot preview */}
+              {/* Screenshot preview with CSS zoom — triggers real layout resize + scrollbars */}
               {screenshotUrl && !isLoading && (
-                <div className="screenshot-img-wrapper">
+                <div
+                  className="screenshot-zoom-area"
+                  style={{ zoom: zoomLevel }}
+                >
                   <img
                     src={screenshotUrl}
                     alt="Captured Website View"

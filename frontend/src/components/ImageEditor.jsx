@@ -3,25 +3,28 @@ import * as fabric from "fabric";
 
 // ─── Tool IDs ────────────────────────────────────────────────────────────────
 const TOOLS = {
-  SELECT:  "select",
-  RECT:    "rect",
-  CIRCLE:  "circle",
-  ELLIPSE: "ellipse",
-  TEXT:    "text",
-  CROP:    "crop",
-  ARROW:   "arrow",
+  SELECT:   "select",
+  FREEHAND: "freehand",
+  RECT:     "rect",
+  CIRCLE:   "circle",
+  ELLIPSE:  "ellipse",
+  TEXT:     "text",
+  CROP:     "crop",
+  ARROW:    "arrow",
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ImageEditor({ imageUrl, onClose }) {
-  const canvasElRef   = useRef(null);
-  const fabricRef     = useRef(null);
-  const drawingRef    = useRef(null);
-  const originRef     = useRef({ x: 0, y: 0 });
-  const cropRectRef   = useRef(null);
-  const isDrawingRef  = useRef(false);
-  const historyRef    = useRef([]);
-  const redoStackRef  = useRef([]);
+  const canvasElRef    = useRef(null);
+  const fabricRef      = useRef(null);
+  const zoomWrapperRef = useRef(null); // CSS zoom is applied to this div
+  const drawingRef     = useRef(null);
+  const originRef      = useRef({ x: 0, y: 0 });
+  const cropRectRef    = useRef(null);
+  const isDrawingRef   = useRef(false);
+  const historyRef     = useRef([]);
+  const redoStackRef   = useRef([]);
+  const editorZoomRef  = useRef(1); // mirrors editorZoom state for event closures
 
   const activeToolRef  = useRef(TOOLS.SELECT);
   const strokeColorRef = useRef("#ef4444");
@@ -39,6 +42,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
   const [canUndo,     setCanUndo]     = useState(false);
   const [canRedo,     setCanRedo]     = useState(false);
   const [cropMode,    setCropMode]    = useState(false);
+  const [editorZoom,  setEditorZoom]  = useState(1);
 
   useEffect(() => { activeToolRef.current  = activeTool;  }, [activeTool]);
   useEffect(() => { strokeColorRef.current = strokeColor; }, [strokeColor]);
@@ -81,29 +85,38 @@ export default function ImageEditor({ imageUrl, onClose }) {
     });
   }, []);
 
-  // ─── Zoom helpers ─────────────────────────────────────────────────────────
+  // ─── Zoom helpers (CSS zoom only — never touches canvas dimensions) ──────────
+  // The canvas element always stays at its original pixel size.
+  // CSS `zoom` on the wrapper div scales the visual appearance AND its layout
+  // footprint, so the overflow:auto scroll container shows real scrollbars.
   const handleZoomIn = useCallback(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    let zoom = canvas.getZoom();
-    zoom *= 1.2;
-    if (zoom > 20) zoom = 20;
-    canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    setEditorZoom(z => { const n = Math.min(z * 1.2, 10); editorZoomRef.current = n; return n; });
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    let zoom = canvas.getZoom();
-    zoom /= 1.2;
-    if (zoom < 0.1) zoom = 0.1;
-    canvas.zoomToPoint({ x: canvas.width / 2, y: canvas.height / 2 }, zoom);
+    setEditorZoom(z => { const n = Math.max(z / 1.2, 0.1); editorZoomRef.current = n; return n; });
   }, []);
 
   const handleZoomReset = useCallback(() => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    editorZoomRef.current = 1;
+    setEditorZoom(1);
+  }, []);
+
+  // Wheel-based zoom on the wrapper div (registered with passive:false so we can preventDefault)
+  useEffect(() => {
+    const wrapper = zoomWrapperRef.current;
+    if (!wrapper) return;
+    const onWheel = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setEditorZoom(prev => {
+        const next = Math.min(Math.max(prev * (0.999 ** e.deltaY), 0.1), 10);
+        editorZoomRef.current = next;
+        return next;
+      });
+    };
+    wrapper.addEventListener("wheel", onWheel, { passive: false });
+    return () => wrapper.removeEventListener("wheel", onWheel);
   }, []);
 
   // ─── Apply tool mode ──────────────────────────────────────────────────────
@@ -130,6 +143,19 @@ export default function ImageEditor({ imageUrl, onClose }) {
             obj.evented = false;
           }
         }
+      });
+    } else if (tool === TOOLS.FREEHAND) {
+      canvas.isDrawingMode = true;
+      if (!canvas.freeDrawingBrush) {
+        canvas.freeDrawingBrush = new fabric.PencilBrush(canvas);
+      }
+      canvas.freeDrawingBrush.color = strokeColorRef.current;
+      canvas.freeDrawingBrush.width = strokeWidthRef.current;
+
+      canvas.selection     = false;
+      canvas.defaultCursor = "crosshair";
+      canvas.forEachObject((obj) => {
+        if (obj.name !== "__bg__") { obj.selectable = false; obj.evented = false; }
       });
     } else {
       canvas.isDrawingMode = false;
@@ -169,16 +195,12 @@ export default function ImageEditor({ imageUrl, onClose }) {
       console.error("Failed to load image into editor:", err);
     });
 
-    canvas.on("mouse:wheel", (opt) => {
-      const delta = opt.e.deltaY;
-      let zoom = canvas.getZoom();
-      zoom *= 0.999 ** delta;
-      if (zoom > 20) zoom = 20;
-      if (zoom < 0.1) zoom = 0.1;
-      const zoomPoint = opt.viewportPoint || { x: opt.e.offsetX, y: opt.e.offsetY };
-      canvas.zoomToPoint(zoomPoint, zoom);
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
+    // NOTE: mouse:wheel is intentionally NOT registered on canvas.
+    // Wheel zoom is handled by the wrapper div listener above (CSS zoom approach).
+
+    // Save history when a freehand path is drawn
+    canvas.on("path:created", () => {
+      pushSnapshot();
     });
 
     canvas.on("mouse:down", (opt) => {
@@ -193,7 +215,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
       }
 
       const tool = activeToolRef.current;
-      if (tool === TOOLS.SELECT) return;
+      if (tool === TOOLS.SELECT || tool === TOOLS.FREEHAND) return;
       if (opt.target && opt.target.name !== "__bg__") return;
       opt.e.preventDefault();
       
@@ -495,6 +517,15 @@ export default function ImageEditor({ imageUrl, onClose }) {
     setCropMode(false); setActiveTool(TOOLS.SELECT);
   }, []);
 
+  // Update brush settings dynamically when color/width change
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (canvas && activeTool === TOOLS.FREEHAND && canvas.freeDrawingBrush) {
+      canvas.freeDrawingBrush.color = strokeColor;
+      canvas.freeDrawingBrush.width = strokeWidth;
+    }
+  }, [strokeColor, strokeWidth, activeTool]);
+
   const downloadImage = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -505,19 +536,22 @@ export default function ImageEditor({ imageUrl, onClose }) {
   }, []);
 
   const selectTool = (tool) => {
-    if (tool !== TOOLS.CROP && cropRectRef.current) cancelCrop();
-    setCropMode(tool === TOOLS.CROP);
-    setActiveTool(tool);
+    // Clicking the already-active tool (other than Select) toggles back to Select
+    const next = (tool !== TOOLS.SELECT && tool === activeTool) ? TOOLS.SELECT : tool;
+    if (next !== TOOLS.CROP && cropRectRef.current) cancelCrop();
+    setCropMode(next === TOOLS.CROP);
+    setActiveTool(next);
   };
 
   const toolButtons = [
-    { id: TOOLS.SELECT,  label: "↖ Select",  title: "Select & move objects" },
-    { id: TOOLS.RECT,    label: "▭ Rect",    title: "Draw rectangle" },
-    { id: TOOLS.CIRCLE,  label: "◯ Circle",  title: "Draw circle" },
-    { id: TOOLS.ELLIPSE, label: "⬭ Ellipse", title: "Draw ellipse" },
-    { id: TOOLS.ARROW,   label: "➔ Arrow",   title: "Draw arrow" },
-    { id: TOOLS.TEXT,    label: "T Text",    title: "Click to place editable text" },
-    { id: TOOLS.CROP,    label: "✂ Crop",    title: "Crop image" },
+    { id: TOOLS.SELECT,   label: "↖ Select",  title: "Select & move objects" },
+    { id: TOOLS.FREEHAND, label: "✏️ Freehand", title: "Draw freely" },
+    { id: TOOLS.RECT,     label: "▭ Rect",    title: "Draw rectangle" },
+    { id: TOOLS.CIRCLE,   label: "◯ Circle",  title: "Draw circle" },
+    { id: TOOLS.ELLIPSE,  label: "⬭ Ellipse", title: "Draw ellipse" },
+    { id: TOOLS.ARROW,    label: "➔ Arrow",   title: "Draw arrow" },
+    { id: TOOLS.TEXT,     label: "T Text",    title: "Click to place editable text" },
+    { id: TOOLS.CROP,     label: "✂ Crop",    title: "Crop image" },
   ];
 
   return (
@@ -604,7 +638,13 @@ export default function ImageEditor({ imageUrl, onClose }) {
       )}
 
       <div className="editor-canvas-wrapper">
-        <canvas ref={canvasElRef} />
+        {/* CSS zoom wrapper — scales visually AND layout so scrollbars appear */}
+        <div
+          ref={zoomWrapperRef}
+          style={{ zoom: editorZoom, display: "inline-block", flexShrink: 0 }}
+        >
+          <canvas ref={canvasElRef} />
+        </div>
       </div>
     </div>
   );
