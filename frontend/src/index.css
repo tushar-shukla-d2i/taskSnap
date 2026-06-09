@@ -682,24 +682,7 @@ footer a:hover {
   letter-spacing: -0.3px;
 }
 
-.overlay-close-btn {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid var(--card-border);
-  color: var(--text-secondary);
-  padding: 0.4rem 1rem;
-  border-radius: 8px;
-  font-family: var(--sans);
-  font-size: 0.82rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-.overlay-close-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: var(--text-secondary);
-  color: #fff;
-  transform: translateX(-2px);
-}
+
 
 /* Editor body fills remaining space */
 .overlay-editor-body {

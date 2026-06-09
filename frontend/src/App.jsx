@@ -9,11 +9,11 @@ function App() {
   const [loadingStep, setLoadingStep] = useState("");
   const [error, setError] = useState("");
   const [showEditor, setShowEditor] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(0.5);
 
   const zoomIn  = () => setZoomLevel(z => Math.min(z + 0.5, 4));
   const zoomOut = () => setZoomLevel(z => Math.max(z - 0.5, 0.5));
-  const zoomReset = () => setZoomLevel(1);
+  const zoomReset = () => setZoomLevel(0.5);
 
 
 
@@ -67,7 +67,7 @@ function App() {
     setError("");
     setScreenshotUrl("");
     setShowEditor(false);
-    setZoomLevel(1);
+    setZoomLevel(0.5);
 
     try {
       const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
@@ -325,7 +325,6 @@ function App() {
           <div className="editor-overlay">
             <div className="overlay-topbar">
               <span className="overlay-title">✏️ Image Editor</span>
-              <button className="overlay-close-btn" onClick={() => setShowEditor(false)}>← Back to Preview</button>
             </div>
             <div className="overlay-editor-body">
               <ImageEditor
