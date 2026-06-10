@@ -18,6 +18,9 @@ export default function ImageEditor({ imageUrl, onClose }) {
   const canvasElRef    = useRef(null);
   const fabricRef      = useRef(null);
   const zoomWrapperRef = useRef(null); // CSS zoom is applied to this div
+  const wrapperRef     = useRef(null);
+  const scrollRafRef   = useRef(null);
+  const pointerPosRef  = useRef({ clientX: 0, clientY: 0 });
   const drawingRef     = useRef(null);
   const originRef      = useRef({ x: 0, y: 0 });
   const cropRectRef    = useRef(null);
@@ -208,12 +211,61 @@ export default function ImageEditor({ imageUrl, onClose }) {
     // NOTE: mouse:wheel is intentionally NOT registered on canvas.
     // Wheel zoom is handled by the wrapper div listener above (CSS zoom approach).
 
+    // Auto-scroll logic
+    const startAutoScroll = () => {
+      if (scrollRafRef.current) return;
+      const scrollLoop = () => {
+        if (!wrapperRef.current) return;
+        const wrapper = wrapperRef.current;
+        const rect = wrapper.getBoundingClientRect();
+        const { clientX, clientY } = pointerPosRef.current;
+        if (clientX === 0 && clientY === 0) {
+          scrollRafRef.current = requestAnimationFrame(scrollLoop);
+          return;
+        }
+
+        const threshold = 40;
+        const speed = 12;
+        
+        let dx = 0, dy = 0;
+        if (clientX > 0 && clientX < rect.left + threshold) dx = -speed;
+        else if (clientX > rect.right - threshold) dx = speed;
+        
+        if (clientY > 0 && clientY < rect.top + threshold) dy = -speed;
+        else if (clientY > rect.bottom - threshold) dy = speed;
+        
+        if (dx !== 0 || dy !== 0) {
+          wrapper.scrollLeft += dx;
+          wrapper.scrollTop += dy;
+          if (canvas.upperCanvasEl) {
+            canvas.upperCanvasEl.dispatchEvent(new MouseEvent('mousemove', {
+              clientX, clientY, bubbles: true
+            }));
+          }
+        }
+        scrollRafRef.current = requestAnimationFrame(scrollLoop);
+      };
+      scrollRafRef.current = requestAnimationFrame(scrollLoop);
+    };
+
+    const stopAutoScroll = () => {
+      if (scrollRafRef.current) {
+        cancelAnimationFrame(scrollRafRef.current);
+        scrollRafRef.current = null;
+      }
+      pointerPosRef.current = { clientX: 0, clientY: 0 };
+    };
+
     // Save history when a freehand path is drawn
     canvas.on("path:created", () => {
       pushSnapshot();
     });
 
     canvas.on("mouse:down", (opt) => {
+      if (opt.e && opt.e.clientX !== undefined) {
+        pointerPosRef.current = { clientX: opt.e.clientX, clientY: opt.e.clientY };
+      }
+      startAutoScroll();
       // Pan on Alt key or middle mouse
       if (opt.e.altKey || opt.e.button === 1) {
         canvas.isDragging = true;
@@ -307,6 +359,9 @@ export default function ImageEditor({ imageUrl, onClose }) {
     });
 
     canvas.on("mouse:move", (opt) => {
+      if (opt.e && opt.e.clientX !== undefined) {
+        pointerPosRef.current = { clientX: opt.e.clientX, clientY: opt.e.clientY };
+      }
       if (canvas.isDragging) {
         const e = opt.e;
         const vpt = canvas.viewportTransform;
@@ -389,6 +444,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
     });
 
     canvas.on("mouse:up", () => {
+      stopAutoScroll();
       if (canvas.isDragging) {
         canvas.setViewportTransform(canvas.viewportTransform);
         canvas.isDragging = false;
@@ -442,6 +498,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
     window.addEventListener("keydown", handleKeyDown);
     return () => { 
       isDisposed = true;
+      stopAutoScroll();
       window.removeEventListener("keydown", handleKeyDown); 
       canvas.dispose(); 
       fabricRef.current = null; 
@@ -667,7 +724,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
         </div>
       )}
 
-      <div className="editor-canvas-wrapper">
+      <div className="editor-canvas-wrapper" ref={wrapperRef}>
         {/* CSS zoom wrapper — scales visually AND layout so scrollbars appear */}
         <div
           ref={zoomWrapperRef}
