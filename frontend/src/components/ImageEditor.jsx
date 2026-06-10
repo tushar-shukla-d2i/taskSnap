@@ -55,7 +55,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
   const pushSnapshot = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
-    historyRef.current.push(canvas.toJSON(["name"]));
+    historyRef.current.push(canvas.toJSON(["name", "selectable", "evented"]));
     redoStackRef.current = [];
     setCanUndo(historyRef.current.length > 1);
     setCanRedo(false);
@@ -67,6 +67,11 @@ export default function ImageEditor({ imageUrl, onClose }) {
     redoStackRef.current.push(historyRef.current.pop());
     const snapshot = historyRef.current[historyRef.current.length - 1];
     canvas.loadFromJSON(snapshot).then(() => {
+      const objs = canvas.getObjects();
+      if (objs.length > 0) {
+        objs[0].set({ selectable: false, evented: false, name: "__bg__" });
+      }
+      setTimeout(() => applyToolMode(activeToolRef.current, canvas), 0);
       canvas.renderAll();
       setCanUndo(historyRef.current.length > 1);
       setCanRedo(redoStackRef.current.length > 0);
@@ -79,6 +84,11 @@ export default function ImageEditor({ imageUrl, onClose }) {
     const snapshot = redoStackRef.current.pop();
     historyRef.current.push(snapshot);
     canvas.loadFromJSON(snapshot).then(() => {
+      const objs = canvas.getObjects();
+      if (objs.length > 0) {
+        objs[0].set({ selectable: false, evented: false, name: "__bg__" });
+      }
+      setTimeout(() => applyToolMode(activeToolRef.current, canvas), 0);
       canvas.renderAll();
       setCanUndo(historyRef.current.length > 1);
       setCanRedo(redoStackRef.current.length > 0);
@@ -190,7 +200,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
       canvas.add(img);
       canvas.sendObjectToBack(img);
       canvas.renderAll();
-      historyRef.current = [canvas.toJSON(["name"])];
+      historyRef.current = [canvas.toJSON(["name", "selectable", "evented"])];
     }).catch(err => {
       console.error("Failed to load image into editor:", err);
     });
@@ -313,10 +323,23 @@ export default function ImageEditor({ imageUrl, onClose }) {
       const ox = originRef.current.x, oy = originRef.current.y;
       const tool = activeToolRef.current;
       if (tool === TOOLS.RECT || tool === TOOLS.CROP) {
-        const newW = Math.abs(pointer.x - ox);
-        const newH = Math.abs(pointer.y - oy);
+        const isCrop = tool === TOOLS.CROP;
+        let pX = pointer.x;
+        let pY = pointer.y;
+        let oX = ox;
+        let oY = oy;
+
+        if (isCrop) {
+          pX = Math.max(0, Math.min(pX, canvas.width));
+          pY = Math.max(0, Math.min(pY, canvas.height));
+          oX = Math.max(0, Math.min(oX, canvas.width));
+          oY = Math.max(0, Math.min(oY, canvas.height));
+        }
+
+        const newW = Math.abs(pX - oX);
+        const newH = Math.abs(pY - oY);
         drawingRef.current.set({
-          left: Math.min(ox, pointer.x), top: Math.min(oy, pointer.y),
+          left: Math.min(oX, pX), top: Math.min(oY, pY),
           width: newW, height: newH,
         });
         drawingRef.current.setCoords();
@@ -439,14 +462,21 @@ export default function ImageEditor({ imageUrl, onClose }) {
     
     cropRect.setCoords();
     const bounds = cropRect.getBoundingRect();
-    if (bounds.width < 5 || bounds.height < 5) { cancelCrop(); return; }
+    
+    let left = Math.max(0, bounds.left);
+    let top = Math.max(0, bounds.top);
+    let right = Math.min(canvas.width, bounds.left + bounds.width);
+    let bottom = Math.min(canvas.height, bounds.top + bounds.height);
+    
+    let width = right - left;
+    let height = bottom - top;
+
+    if (width < 5 || height < 5) { cancelCrop(); return; }
     
     // Remove the crop rectangle so it doesn't appear in the snapshot
     canvas.remove(cropRect);
     cropRectRef.current = null;
     canvas.renderAll();
-    
-    const { left, top, width, height } = bounds;
     
     try {
       // 1. Snapshot the entire canvas (flattens annotations into the image)
@@ -495,7 +525,7 @@ export default function ImageEditor({ imageUrl, onClose }) {
             canvas.sendObjectToBack(newImg); 
             canvas.renderAll();
             
-            historyRef.current = [canvas.toJSON(["name"])];
+            historyRef.current = [canvas.toJSON(["name", "selectable", "evented"])];
             setCanUndo(false); setCanRedo(false); setCropMode(false); setActiveTool(TOOLS.SELECT);
             console.log("Crop complete.");
           }).catch(err => console.error("Crop load error:", err));

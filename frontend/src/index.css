@@ -344,6 +344,20 @@ p.subtitle {
   flex-grow: 1;
   background: #111217;
   position: relative;
+  overflow: hidden;
+}
+
+/* Tint the native iframe scrollbar since cross-origin security prevents direct CSS styling */
+.iframe-container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 17px; /* Standard Windows scrollbar width */
+  height: 100%;
+  background: rgba(17, 18, 23, 0.65);
+  pointer-events: none;
+  backdrop-filter: grayscale(100%) contrast(1.2);
 }
 
 .iframe-container iframe {
@@ -351,6 +365,7 @@ p.subtitle {
   height: 100%;
   border: none;
   background: white;
+  color-scheme: dark;
 }
 
 /* Web view restricted warning card */

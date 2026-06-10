@@ -338,10 +338,8 @@ function App() {
 
       <footer>
         <p>
-          TaskSnap &copy; 2026. Powered by{" "}
-          <a href="https://playwright.dev" target="_blank" rel="noreferrer">Playwright</a>,{" "}
-          <a href="https://fabricjs.com" target="_blank" rel="noreferrer">Fabric.js</a> and{" "}
-          <a href="https://vite.dev" target="_blank" rel="noreferrer">React (Vite)</a>.
+          TaskSnap &copy; 2026. Developed by{" "}
+          <a href="https://d2itechnology.com/" target="_blank" rel="noreferrer">D2i Technology</a>
         </p>
       </footer>
     </>
