@@ -44,6 +44,33 @@ app.post("/capture", async (req, res) => {
             timeout: 60000,
         });
 
+        // Scroll down the page to trigger lazy loading for images
+        await page.evaluate(async () => {
+            await new Promise((resolve) => {
+                let totalHeight = 0;
+                const distance = 100;
+                let scrolls = 0; // Prevent infinite scroll on some pages
+                const timer = setInterval(() => {
+                    const scrollHeight = document.body.scrollHeight;
+                    window.scrollBy(0, distance);
+                    totalHeight += distance;
+                    scrolls++;
+
+                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 200) {
+                        clearInterval(timer);
+                        resolve();
+                    }
+                }, 50);
+            });
+        });
+
+        // Wait for lazy loaded images to finish downloading
+        try {
+            await page.waitForLoadState("networkidle", { timeout: 3000 });
+        } catch (e) {
+            // Proceed even if network doesn't completely idle
+        }
+
         const filename = `screenshot-${Date.now()}.png`;
 
         const filepath = path.join(SCREENSHOT_DIR, filename);

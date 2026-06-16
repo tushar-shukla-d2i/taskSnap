@@ -40,7 +40,6 @@ function App() {
       "Delivering high-resolution image..."
     ];
 
-    setLoadingStep(steps[0]);
     let index = 0;
 
     const interval = setInterval(() => {
@@ -64,6 +63,7 @@ function App() {
     setInputUrl(targetUrl);
     setCurrentUrl(targetUrl);
     setIsLoading(true);
+    setLoadingStep("Starting Playwright browser engine...");
     setError("");
     setScreenshotUrl("");
     setShowEditor(false);
@@ -243,7 +243,7 @@ function App() {
                       className="action-btn"
                       onClick={zoomReset}
                       title="Reset Zoom"
-                    >⊞</button>
+                    >🔍= </button>
                     <button
                       className="action-btn edit-open-btn"
                       onClick={() => setShowEditor(true)}
