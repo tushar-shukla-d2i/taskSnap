@@ -16,6 +16,8 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 }
 
 app.use("/screenshots", express.static(SCREENSHOT_DIR));
+app.use("/twemoji-script", express.static(path.join(__dirname, "node_modules", "twemoji", "dist")));
+app.use("/twemoji-assets", express.static(path.join(__dirname, "node_modules", "twemoji", "assets")));
 
 app.post("/capture", async (req, res) => {
     try {
@@ -28,6 +30,10 @@ app.post("/capture", async (req, res) => {
             });
         }
 
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.get("host");
+        const baseUrl = `${protocol}://${host}`;
+
         const browser = await chromium.launch({
             headless: true,
         });
@@ -37,6 +43,7 @@ app.post("/capture", async (req, res) => {
                 width: 1440,
                 height: 900,
             },
+            bypassCSP: true, // Bypass CSP to ensure we can inject Twemoji and capture restricted sites
         });
 
         await page.goto(url, {
@@ -71,6 +78,25 @@ app.post("/capture", async (req, res) => {
             // Proceed even if network doesn't completely idle
         }
 
+        // Fix missing emoji fonts on linux/dev servers by replacing them with local Twemoji images
+        try {
+            await page.addScriptTag({ url: `${baseUrl}/twemoji-script/twemoji.min.js` });
+            await page.evaluate((baseUrlStr) => {
+                if (window.twemoji) {
+                    const style = document.createElement("style");
+                    style.textContent = "img.emoji { height: 1em; width: 1em; margin: 0 .05em 0 .1em; vertical-align: -0.1em; display: inline-block; border: none; box-shadow: none; background: transparent; }";
+                    document.head.appendChild(style);
+                    window.twemoji.parse(document.body, {
+                        base: `${baseUrlStr}/twemoji-assets/`
+                    });
+                }
+            }, baseUrl);
+            // Wait briefly for SVG emojis to load before capturing
+            await page.waitForTimeout(800);
+        } catch (e) {
+            console.error("Twemoji injection failed:", e);
+        }
+
         const filename = `screenshot-${Date.now()}.png`;
 
         const filepath = path.join(SCREENSHOT_DIR, filename);
@@ -81,10 +107,6 @@ app.post("/capture", async (req, res) => {
         });
 
         await browser.close();
-
-        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-        const host = req.get("host");
-        const baseUrl = `${protocol}://${host}`;
 
         res.json({
             success: true,
