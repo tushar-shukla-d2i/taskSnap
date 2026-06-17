@@ -12,7 +12,6 @@
   "dependencies": {
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "playwright": "^1.60.0",
-    "twemoji": "^14.0.2"
+    "playwright": "^1.60.0"
   }
 }
