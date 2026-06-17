@@ -72,23 +72,28 @@ app.post("/capture", async (req, res) => {
             // Proceed even if network doesn't completely idle
         }
 
-        // Fix missing emoji fonts on linux/dev servers by replacing them with Twemoji images
+        // Fix missing emoji fonts on linux/dev servers by injecting Google's Noto Color Emoji
         try {
-            await page.addScriptTag({ url: "https://cdn.jsdelivr.net/npm/@twemoji/api@14.1.0/dist/twemoji.min.js" });
-            await page.evaluate(() => {
-                if (window.twemoji) {
-                    const style = document.createElement("style");
-                    style.textContent = "img.emoji { height: 1em; width: 1em; margin: 0 .05em 0 .1em; vertical-align: -0.1em; display: inline-block; border: none; box-shadow: none; background: transparent; }";
-                    document.head.appendChild(style);
-                    window.twemoji.parse(document.body, {
-                        base: "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/"
-                    });
+            await page.addStyleTag({ url: "https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" });
+            
+            await page.evaluate(async () => {
+                // Wait for the font to be loaded
+                await document.fonts.ready;
+                
+                // Append the emoji font as a fallback to every element to preserve original fonts
+                const elements = document.querySelectorAll('body, body *');
+                for (const el of elements) {
+                    const computed = window.getComputedStyle(el).fontFamily;
+                    if (!computed.includes('Noto Color Emoji')) {
+                        el.style.setProperty('font-family', `${computed}, "Noto Color Emoji"`, 'important');
+                    }
                 }
             });
-            // Wait briefly for SVG emojis to load before capturing
+            
+            // Wait briefly for the text nodes to re-render with the new font
             await page.waitForTimeout(800);
         } catch (e) {
-            console.error("Twemoji injection failed:", e);
+            console.error("Noto Color Emoji injection failed:", e);
         }
 
         const filename = `screenshot-${Date.now()}.png`;
