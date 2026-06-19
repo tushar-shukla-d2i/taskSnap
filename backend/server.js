@@ -31,8 +31,16 @@ app.post("/capture", async (req, res) => {
             });
         }
 
-        if (!globalBrowser) {
-            globalBrowser = await chromium.launch({ headless: true });
+        if (!globalBrowser || !globalBrowser.isConnected()) {
+            globalBrowser = await chromium.launch({
+                headless: true,
+                args: [
+                    "--disable-dev-shm-usage", // Fixes issues and slowdowns in Docker/Linux environments
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-gpu", // GPU hardware acceleration isn't typically available on deployed servers
+                ],
+            });
         }
 
         const context = await globalBrowser.newContext({
@@ -56,15 +64,15 @@ app.post("/capture", async (req, res) => {
         const page = await context.newPage();
 
         await page.goto(url, {
-            waitUntil: "load", // Changed from networkidle to load for faster resolution
-            timeout: 60000,
+            waitUntil: "domcontentloaded", // Faster than 'load', we'll load images during the manual scroll
+            timeout: 30000, // Reduced from 60s so it fails faster if the site is completely unresponsive
         });
 
         // Scroll down the page to trigger lazy loading for images
         await page.evaluate(async () => {
             await new Promise((resolve) => {
                 let totalHeight = 0;
-                const distance = 800; // Increased distance for faster scrolling
+                const distance = 1200; // Massively increased distance for faster scrolling
                 let scrolls = 0; // Prevent infinite scroll on some pages
                 const timer = setInterval(() => {
                     const scrollHeight = document.body.scrollHeight;
@@ -72,11 +80,11 @@ app.post("/capture", async (req, res) => {
                     totalHeight += distance;
                     scrolls++;
 
-                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 50) {
+                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 35) {
                         clearInterval(timer);
                         resolve();
                     }
-                }, 80); // Slight interval to allow intersection observers to trigger
+                }, 40); // 40ms interval is blazing fast but enough for intersection observers
             });
         });
 
@@ -145,6 +153,12 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
     globalBrowser = await chromium.launch({
         headless: true,
+        args: [
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+        ],
     });
     console.log(`Server running on port ${PORT}`);
 });
