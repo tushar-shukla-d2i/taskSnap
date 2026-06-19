@@ -17,6 +17,9 @@ if (!fs.existsSync(SCREENSHOT_DIR)) {
 
 app.use("/screenshots", express.static(SCREENSHOT_DIR));
 
+// Global browser instance to avoid launching chromium on every request
+let globalBrowser;
+
 app.post("/capture", async (req, res) => {
     try {
         const { url } = req.body;
@@ -28,11 +31,11 @@ app.post("/capture", async (req, res) => {
             });
         }
 
-        const browser = await chromium.launch({
-            headless: true,
-        });
+        if (!globalBrowser) {
+            globalBrowser = await chromium.launch({ headless: true });
+        }
 
-        const page = await browser.newPage({
+        const context = await globalBrowser.newContext({
             viewport: {
                 width: 1440,
                 height: 900,
@@ -40,8 +43,20 @@ app.post("/capture", async (req, res) => {
             bypassCSP: true, // Bypass CSP to ensure we can inject Twemoji and capture restricted sites
         });
 
+        // Block heavy media files to speed up loading
+        await context.route("**/*", (route) => {
+            const request = route.request();
+            if (["media", "websocket"].includes(request.resourceType())) {
+                route.abort();
+            } else {
+                route.continue();
+            }
+        });
+
+        const page = await context.newPage();
+
         await page.goto(url, {
-            waitUntil: "networkidle",
+            waitUntil: "load", // Changed from networkidle to load for faster resolution
             timeout: 60000,
         });
 
@@ -49,7 +64,7 @@ app.post("/capture", async (req, res) => {
         await page.evaluate(async () => {
             await new Promise((resolve) => {
                 let totalHeight = 0;
-                const distance = 100;
+                const distance = 800; // Increased distance for faster scrolling
                 let scrolls = 0; // Prevent infinite scroll on some pages
                 const timer = setInterval(() => {
                     const scrollHeight = document.body.scrollHeight;
@@ -57,17 +72,17 @@ app.post("/capture", async (req, res) => {
                     totalHeight += distance;
                     scrolls++;
 
-                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 200) {
+                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 50) {
                         clearInterval(timer);
                         resolve();
                     }
-                }, 50);
+                }, 80); // Slight interval to allow intersection observers to trigger
             });
         });
 
         // Wait for lazy loaded images to finish downloading
         try {
-            await page.waitForLoadState("networkidle", { timeout: 3000 });
+            await page.waitForLoadState("networkidle", { timeout: 1500 }); // Reduced timeout
         } catch (e) {
             // Proceed even if network doesn't completely idle
         }
@@ -91,7 +106,7 @@ app.post("/capture", async (req, res) => {
             });
             
             // Wait briefly for the text nodes to re-render with the new font
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(200);
         } catch (e) {
             console.error("Noto Color Emoji injection failed:", e);
         }
@@ -105,7 +120,7 @@ app.post("/capture", async (req, res) => {
             fullPage: true,
         });
 
-        await browser.close();
+        await context.close(); // Close only the context, keep the browser running
 
         const protocol = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.get("host");
@@ -127,6 +142,9 @@ app.post("/capture", async (req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
+    globalBrowser = await chromium.launch({
+        headless: true,
+    });
     console.log(`Server running on port ${PORT}`);
 });
