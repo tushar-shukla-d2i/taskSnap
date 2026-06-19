@@ -19,10 +19,40 @@ app.use("/screenshots", express.static(SCREENSHOT_DIR));
 
 // Global browser instance to avoid launching chromium on every request
 let globalBrowser;
+let browserLaunching; // promise guard so concurrent requests don't double-launch
+
+async function getBrowser() {
+    if (globalBrowser && globalBrowser.isConnected()) return globalBrowser;
+    if (browserLaunching) return browserLaunching;
+
+    browserLaunching = chromium.launch({
+        headless: true,
+        args: [
+            "--disable-dev-shm-usage",
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-gpu",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-default-apps",
+            "--mute-audio",
+        ],
+    });
+
+    globalBrowser = await browserLaunching;
+    browserLaunching = null;
+    return globalBrowser;
+}
+
+// One-time global stylesheet text — avoids the expensive per-element querySelectorAll+loop
+const EMOJI_FALLBACK_CSS = `
+* { font-family: inherit, "Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji", sans-serif !important; }
+`;
 
 app.post("/capture", async (req, res) => {
+    let context;
     try {
-        const { url } = req.body;
+        const { url, format = "jpeg", quality = 80, fast = false } = req.body;
 
         if (!url) {
             return res.status(400).json({
@@ -31,30 +61,21 @@ app.post("/capture", async (req, res) => {
             });
         }
 
-        if (!globalBrowser || !globalBrowser.isConnected()) {
-            globalBrowser = await chromium.launch({
-                headless: true,
-                args: [
-                    "--disable-dev-shm-usage", // Fixes issues and slowdowns in Docker/Linux environments
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-gpu", // GPU hardware acceleration isn't typically available on deployed servers
-                ],
-            });
-        }
+        const browser = await getBrowser();
 
-        const context = await globalBrowser.newContext({
-            viewport: {
-                width: 1440,
-                height: 900,
-            },
-            bypassCSP: true, // Bypass CSP to ensure we can inject Twemoji and capture restricted sites
+        context = await browser.newContext({
+            viewport: { width: 1440, height: 900 },
+            bypassCSP: true,
         });
 
-        // Block heavy media files to speed up loading
+        // Block heavy/unnecessary resources. In "fast" mode also block images for max speed.
+        const blockedTypes = fast
+            ? ["media", "websocket", "image", "font"]
+            : ["media", "websocket"];
+
         await context.route("**/*", (route) => {
             const request = route.request();
-            if (["media", "websocket"].includes(request.resourceType())) {
+            if (blockedTypes.includes(request.resourceType())) {
                 route.abort();
             } else {
                 route.continue();
@@ -64,71 +85,62 @@ app.post("/capture", async (req, res) => {
         const page = await context.newPage();
 
         await page.goto(url, {
-            waitUntil: "domcontentloaded", // Faster than 'load', we'll load images during the manual scroll
-            timeout: 30000, // Reduced from 60s so it fails faster if the site is completely unresponsive
+            waitUntil: "domcontentloaded",
+            timeout: 25000,
         });
 
-        // Scroll down the page to trigger lazy loading for images
+        // Faster lazy-load trigger: bigger jumps, shorter interval, fewer max scrolls
         await page.evaluate(async () => {
             await new Promise((resolve) => {
                 let totalHeight = 0;
-                const distance = 1200; // Massively increased distance for faster scrolling
-                let scrolls = 0; // Prevent infinite scroll on some pages
+                const distance = 2000;
+                let scrolls = 0;
                 const timer = setInterval(() => {
                     const scrollHeight = document.body.scrollHeight;
                     window.scrollBy(0, distance);
                     totalHeight += distance;
                     scrolls++;
 
-                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 35) {
+                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 20) {
                         clearInterval(timer);
                         resolve();
                     }
-                }, 40); // 40ms interval is blazing fast but enough for intersection observers
+                }, 25);
             });
         });
 
-        // Wait for lazy loaded images to finish downloading
+        // Short, capped wait for late images/network — don't let slow sites stall us
         try {
-            await page.waitForLoadState("networkidle", { timeout: 1500 }); // Reduced timeout
+            await page.waitForLoadState("networkidle", { timeout: 800 });
         } catch (e) {
-            // Proceed even if network doesn't completely idle
+            // fine, proceed anyway
         }
 
-        // Fix missing emoji fonts on linux/dev servers by injecting Google's Noto Color Emoji
-        try {
-            await page.addStyleTag({ url: "https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap" });
-            
-            await page.evaluate(async () => {
-                // Wait for the font to be loaded
-                await document.fonts.ready;
-                
-                // Append the emoji font as a fallback to every element to preserve original fonts
-                const elements = document.querySelectorAll('body, body *');
-                for (const el of elements) {
-                    const computed = window.getComputedStyle(el).fontFamily;
-                    if (!computed.includes('Noto Color Emoji')) {
-                        el.style.setProperty('font-family', `${computed}, "Noto Color Emoji"`, 'important');
-                    }
-                }
-            });
-            
-            // Wait briefly for the text nodes to re-render with the new font
-            await page.waitForTimeout(200);
-        } catch (e) {
-            console.error("Noto Color Emoji injection failed:", e);
+        // Lightweight emoji fallback: single stylesheet injection, no DOM walking, no remote font fetch
+        if (!fast) {
+            try {
+                await page.addStyleTag({ content: EMOJI_FALLBACK_CSS });
+            } catch (e) {
+                console.error("Emoji fallback CSS injection failed:", e);
+            }
         }
 
-        const filename = `screenshot-${Date.now()}.png`;
-
+        const ext = format === "png" ? "png" : "jpeg";
+        const filename = `screenshot-${Date.now()}.${ext}`;
         const filepath = path.join(SCREENSHOT_DIR, filename);
 
-        await page.screenshot({
+        const screenshotOptions = {
             path: filepath,
             fullPage: true,
-        });
+            animations: "disabled",
+            timeout: 60000,
+            type: ext,
+        };
+        if (ext === "jpeg") {
+            screenshotOptions.quality = quality; // jpeg encodes much faster than png
+        }
 
-        await context.close(); // Close only the context, keep the browser running
+        await page.screenshot(screenshotOptions);
 
         const protocol = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.get("host");
@@ -140,25 +152,26 @@ app.post("/capture", async (req, res) => {
         });
     } catch (error) {
         console.error(error);
-
         res.status(500).json({
             success: false,
             message: error.message,
         });
+    } finally {
+        // Always close the context, even on error, so it doesn't leak across requests
+        if (context) {
+            await context.close().catch(() => { });
+        }
     }
 });
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, async () => {
-    globalBrowser = await chromium.launch({
-        headless: true,
-        args: [
-            "--disable-dev-shm-usage",
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-gpu",
-        ],
-    });
+    await getBrowser();
     console.log(`Server running on port ${PORT}`);
+});
+
+process.on("SIGTERM", async () => {
+    if (globalBrowser) await globalBrowser.close().catch(() => { });
+    process.exit(0);
 });
