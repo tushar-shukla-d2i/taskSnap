@@ -84,16 +84,24 @@ app.post("/capture", async (req, res) => {
 
         const page = await context.newPage();
 
+        // 1. Wait until 'load' so the initial DOM, CSS, and JS are fully parsed and mounted
         await page.goto(url, {
-            waitUntil: "domcontentloaded",
+            waitUntil: "load",
             timeout: 25000,
         });
 
-        // Faster lazy-load trigger: bigger jumps, shorter interval, fewer max scrolls
+        // 2. Defeat native lazy loading by removing the loading attribute
+        await page.evaluate(() => {
+            document.querySelectorAll('img[loading="lazy"]').forEach(img => {
+                img.removeAttribute('loading');
+            });
+        });
+
+        // 3. Deliberate, smooth scroll to trigger JS-based lazy loaders (like AOS, lazysizes)
         await page.evaluate(async () => {
             await new Promise((resolve) => {
                 let totalHeight = 0;
-                const distance = 2000;
+                const distance = window.innerHeight / 2; // Scroll half a viewport to catch everything
                 let scrolls = 0;
                 const timer = setInterval(() => {
                     const scrollHeight = document.body.scrollHeight;
@@ -101,17 +109,38 @@ app.post("/capture", async (req, res) => {
                     totalHeight += distance;
                     scrolls++;
 
-                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 20) {
+                    // Stop if we reach the bottom or after a reasonable limit
+                    if (totalHeight >= scrollHeight - window.innerHeight || scrolls >= 60) {
                         clearInterval(timer);
                         resolve();
                     }
-                }, 25);
+                }, 150); // 150ms gives IntersectionObservers plenty of time to fire
             });
         });
 
-        // Short, capped wait for late images/network — don't let slow sites stall us
+        // 4. Reset scroll position to top to fix fixed/sticky headers
+        // We add a 1000ms delay here because some headers have CSS "slide down" animations 
+        // when returning to the top, and we need to wait for them to finish before snapping.
+        await page.evaluate(async () => {
+            window.scrollTo(0, 0);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        });
+
+        // 5. Wait explicitly for all currently parsed <img> tags to finish downloading
+        await page.evaluate(async () => {
+            const images = Array.from(document.querySelectorAll('img'));
+            await Promise.all(images.map(img => {
+                if (img.complete) return Promise.resolve();
+                return new Promise(resolve => {
+                    img.addEventListener('load', resolve);
+                    img.addEventListener('error', resolve);
+                });
+            }));
+        });
+
+        // 6. Final safety wait for late network requests (e.g. background-images in CSS)
         try {
-            await page.waitForLoadState("networkidle", { timeout: 800 });
+            await page.waitForLoadState("networkidle", { timeout: 5000 });
         } catch (e) {
             // fine, proceed anyway
         }
