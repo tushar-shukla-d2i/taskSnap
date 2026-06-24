@@ -39,11 +39,15 @@ The backend is an Express server that uses Playwright to navigate to a requested
    ```bash
    npm install
    ```
-3. Set up environment variables (create a `.env` file based on `.env.example` if needed):
+3. Install Playwright browsers:
+   ```bash
+   npx playwright install
+   ```
+4. Set up environment variables (create a `.env` file based on `.env.example` if needed):
    ```env
    PORT=5000
    ```
-4. Start the backend development server:
+5. Start the backend development server:
    ```bash
    npm run dev
    ```
